@@ -6,7 +6,6 @@ import (
 	"net"
 	"time"
 
-	"github.com/exzz/netatmo-api-go"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/pflag"
 )
@@ -80,7 +79,8 @@ type Config struct {
 	LogLevel        logLevel
 	RefreshInterval time.Duration
 	StaleDuration   time.Duration
-	Netatmo         netatmo.Config
+	ClientID        string
+	ClientSecret    string
 }
 
 // Parse takes the arguments and environment variables provided and creates the Config from that.
@@ -99,8 +99,8 @@ func Parse(args []string, getEnv func(string) string) (Config, error) {
 	flagSet.Var(&cfg.LogLevel, flagLogLevel, "Sets the minimum level output through logging.")
 	flagSet.DurationVar(&cfg.RefreshInterval, flagRefreshInterval, cfg.RefreshInterval, "Time interval used for internal caching of NetAtmo sensor data.")
 	flagSet.DurationVar(&cfg.StaleDuration, flagStaleDuration, cfg.StaleDuration, "Data age to consider as stale. Stale data does not create metrics anymore.")
-	flagSet.StringVarP(&cfg.Netatmo.ClientID, flagNetatmoClientID, "i", cfg.Netatmo.ClientID, "Client ID for NetAtmo app.")
-	flagSet.StringVarP(&cfg.Netatmo.ClientSecret, flagNetatmoClientSecret, "s", cfg.Netatmo.ClientSecret, "Client secret for NetAtmo app.")
+	flagSet.StringVarP(&cfg.ClientID, flagNetatmoClientID, "i", cfg.ClientID, "Client ID for NetAtmo app.")
+	flagSet.StringVarP(&cfg.ClientSecret, flagNetatmoClientSecret, "s", cfg.ClientSecret, "Client secret for NetAtmo app.")
 
 	if err := flagSet.Parse(args[1:]); err != nil {
 		return Config{}, err
@@ -131,11 +131,11 @@ func Parse(args []string, getEnv func(string) string) (Config, error) {
 		return Config{}, errNoTokenFile
 	}
 
-	if len(cfg.Netatmo.ClientID) == 0 {
+	if len(cfg.ClientID) == 0 {
 		return Config{}, errNoNetatmoClientID
 	}
 
-	if len(cfg.Netatmo.ClientSecret) == 0 {
+	if len(cfg.ClientSecret) == 0 {
 		return Config{}, errNoNetatmoClientSecret
 	}
 
@@ -188,11 +188,11 @@ func applyEnvironment(cfg *Config, getenv func(string) string) error {
 	}
 
 	if envClientID := getenv(envVarNetatmoClientID); envClientID != "" {
-		cfg.Netatmo.ClientID = envClientID
+		cfg.ClientID = envClientID
 	}
 
 	if envClientSecret := getenv(envVarNetatmoClientSecret); envClientSecret != "" {
-		cfg.Netatmo.ClientSecret = envClientSecret
+		cfg.ClientSecret = envClientSecret
 	}
 
 	return nil

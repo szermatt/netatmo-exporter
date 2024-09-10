@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	netatmo "github.com/exzz/netatmo-api-go"
 	"github.com/sirupsen/logrus"
 )
 
@@ -43,10 +42,8 @@ func TestParseConfig(t *testing.T) {
 				LogLevel:        logLevel(logrus.InfoLevel),
 				RefreshInterval: defaultRefreshInterval,
 				StaleDuration:   defaultStaleDuration,
-				Netatmo: netatmo.Config{
-					ClientID:     "id",
-					ClientSecret: "secret",
-				},
+				ClientID:        "id",
+				ClientSecret:    "secret",
 			},
 			wantErr: nil,
 		},
@@ -72,10 +69,8 @@ func TestParseConfig(t *testing.T) {
 				LogLevel:        logLevel(logrus.DebugLevel),
 				RefreshInterval: 5 * time.Minute,
 				StaleDuration:   10 * time.Minute,
-				Netatmo: netatmo.Config{
-					ClientID:     "id",
-					ClientSecret: "secret",
-				},
+				ClientID:        "id",
+				ClientSecret:    "secret",
 			},
 			wantErr: nil,
 		},
@@ -92,11 +87,9 @@ func TestParseConfig(t *testing.T) {
 			},
 			env: map[string]string{},
 			wantConfig: Config{
-				Addr: defaultConfig.Addr,
-				Netatmo: netatmo.Config{
-					ClientID:     "id",
-					ClientSecret: "secret",
-				},
+				Addr:         defaultConfig.Addr,
+				ClientID:     "id",
+				ClientSecret: "secret",
 			},
 			wantErr: errNoListenAddress,
 		},
@@ -107,11 +100,9 @@ func TestParseConfig(t *testing.T) {
 			},
 			env: map[string]string{},
 			wantConfig: Config{
-				Addr: defaultConfig.Addr,
-				Netatmo: netatmo.Config{
-					ClientID:     "id",
-					ClientSecret: "secret",
-				},
+				Addr:         defaultConfig.Addr,
+				ClientID:     "id",
+				ClientSecret: "secret",
 			},
 			wantErr: errNoTokenFile,
 		},
@@ -126,11 +117,9 @@ func TestParseConfig(t *testing.T) {
 			},
 			env: map[string]string{},
 			wantConfig: Config{
-				Addr: defaultConfig.Addr,
-				Netatmo: netatmo.Config{
-					ClientID:     "id",
-					ClientSecret: "secret",
-				},
+				Addr:         defaultConfig.Addr,
+				ClientID:     "id",
+				ClientSecret: "secret",
 			},
 			wantErr: errNoNetatmoClientID,
 		},
@@ -145,11 +134,9 @@ func TestParseConfig(t *testing.T) {
 			},
 			env: map[string]string{},
 			wantConfig: Config{
-				Addr: defaultConfig.Addr,
-				Netatmo: netatmo.Config{
-					ClientID:     "id",
-					ClientSecret: "secret",
-				},
+				Addr:         defaultConfig.Addr,
+				ClientID:     "id",
+				ClientSecret: "secret",
 			},
 			wantErr: errNoNetatmoClientSecret,
 		},

@@ -3,10 +3,8 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"os"
-	"os/signal"
 	"syscall"
 	"time"
 
@@ -43,29 +41,34 @@ func main() {
 	}
 	log.SetLevel(logrus.Level(cfg.LogLevel))
 
-	client := netatmo.NewClient(cfg.Netatmo)
-
-	if cfg.TokenFile != "" {
-		token, err := loadToken(cfg.TokenFile)
+	var tok *oauth2.Token
+	if cfg.TokenFile == "" {
+		log.Warn("No token-file set! Authentication will be lost on restart.")
+	} else {
+		tok, err = loadToken(cfg.TokenFile)
 		switch {
 		case os.IsNotExist(err):
 		case err != nil:
 			log.Fatalf("Error loading token: %s", err)
+
 		default:
-			if token.RefreshToken == "" {
+			if tok.RefreshToken == "" {
 				log.Warn("Restored token has no refresh-token! Exporter will need to be re-authenticated manually.")
-			} else if token.Expiry.IsZero() {
+			} else if tok.Expiry.IsZero() {
 				log.Warn("Restored token has no expiry time! Token will be renewed immediately.")
-				token.Expiry = time.Now().Add(time.Second)
+				tok.Expiry = time.Now().Add(time.Second)
 			}
-
 			log.Infof("Loaded token from %s.", cfg.TokenFile)
-			client.InitWithToken(context.Background(), token)
 		}
+	}
 
-		registerSignalHandler(client, cfg.TokenFile)
-	} else {
-		log.Warn("No token-file set! Authentication will be lost on restart.")
+	client := netatmo.NewClient(netatmo.Config{
+		ClientID:     cfg.ClientID,
+		ClientSecret: cfg.ClientSecret,
+		TokenSource:  newFileTokenSource(cfg.TokenFile, tok),
+	})
+	if tok != nil {
+		client.InitWithToken(context.Background(), tok)
 	}
 
 	metrics := collector.New(log, client.Read, cfg.RefreshInterval, cfg.StaleDuration)
@@ -94,6 +97,9 @@ func main() {
 }
 
 func loadToken(fileName string) (*oauth2.Token, error) {
+	if fileName == "" {
+		return nil, nil
+	}
 	file, err := os.Open(fileName)
 	if err != nil {
 		return nil, err
@@ -108,41 +114,59 @@ func loadToken(fileName string) (*oauth2.Token, error) {
 	return &token, nil
 }
 
-func registerSignalHandler(client *netatmo.Client, fileName string) {
-	ch := make(chan os.Signal, 1)
-	signal.Notify(ch, signals...)
-	go func() {
-		sig := <-ch
-		signal.Reset(signals...)
-		log.Debugf("Got signal: %s", sig)
-
-		if err := saveToken(client, fileName); err != nil {
-			log.Errorf("Error persisting token: %s", err)
+// newFileTokenSource returns a wrapper for a TokenSource that saves to tokenFile.
+//
+// If initialToken is non-nil, that particular token is not saved.
+func newFileTokenSource(tokenFile string, initialToken *oauth2.Token) func(oauth2.TokenSource) oauth2.TokenSource {
+	if tokenFile == "" {
+		log.Info("OOK no token file")
+		return nil
+	}
+	var initialExpiry time.Time
+	if initialToken != nil {
+		initialExpiry = initialToken.Expiry
+	}
+	return func(source oauth2.TokenSource) oauth2.TokenSource {
+		return &fileTokenSource{
+			source:     source,
+			tokenFile:  tokenFile,
+			lastExpiry: initialExpiry,
 		}
-
-		os.Exit(0)
-	}()
+	}
 }
 
-func saveToken(client *netatmo.Client, fileName string) error {
-	token, err := client.CurrentToken()
-	switch {
-	case err == netatmo.ErrNotAuthenticated:
-		return nil
-	case err != nil:
-		return fmt.Errorf("error retrieving token: %w", err)
-	default:
-	}
+// fileTokenSource detects when the token changes and saves it.
+type fileTokenSource struct {
+	// Original TokenSource
+	source oauth2.TokenSource
+	// File to update when the token is refreshed
+	tokenFile string
+	// Expiry value of the last token that was seen
+	lastExpiry time.Time
+}
 
-	log.Infof("Saving token to %s ...", fileName)
-	data, err := json.Marshal(token)
+func (f *fileTokenSource) Token() (*oauth2.Token, error) {
+	token, err := f.source.Token()
 	if err != nil {
-		return fmt.Errorf("error marshalling token: %w", err)
+		log.Infof("OOK Token() failed %s", err)
+		return token, err
 	}
+	log.Infof("OOK got Token() %s/%s", token.Expiry, f.lastExpiry)
 
-	if err := os.WriteFile(fileName, data, 0o600); err != nil {
-		return fmt.Errorf("error writing token file: %w", err)
+	if token.Expiry != f.lastExpiry {
+		// Token was refreshed, save it. A failure here shouldn't
+		// disrupt normal operations.
+		f.lastExpiry = token.Expiry
+
+		log.Infof("Token refreshed. Saving to %s ...", f.tokenFile)
+		data, err := json.Marshal(token)
+		if err != nil {
+			log.Warnf("Error marshalling token: %s", err)
+		} else {
+			if err = os.WriteFile(f.tokenFile, data, 0o600); err != nil {
+				log.Warnf("Error writing token file %s: %s", f.tokenFile, err)
+			}
+		}
 	}
-
-	return nil
+	return token, nil
 }
